@@ -131,6 +131,42 @@ export async function updateCategoryBudgetExpense(formData: FormData) {
   revalidatePath("/")
 }
 
+export async function updateActualExpense(formData: FormData) {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session) {
+    throw new Error("Unauthorized")
+  }
+
+  const id = String(formData.get("id") ?? "").trim()
+  const actualAmount = Number.parseFloat(
+    String(formData.get("actualAmount") ?? "")
+  )
+
+  if (!id) {
+    throw new Error("Expense id is required")
+  }
+  if (!Number.isFinite(actualAmount) || actualAmount < 0) {
+    throw new Error("Actual amount must be a positive number")
+  }
+
+  const [updated] = await db
+    .update(categoryBudgetExpenses)
+    .set({ actualAmount })
+    .where(
+      and(
+        eq(categoryBudgetExpenses.id, id),
+        eq(categoryBudgetExpenses.userId, session.user.id)
+      )
+    )
+    .returning()
+
+  if (!updated) {
+    throw new Error("Expense not found")
+  }
+
+  revalidatePath("/")
+}
+
 export async function updateIncome(formData: FormData) {
   const session = await auth.api.getSession({ headers: await headers() })
   if (!session) {

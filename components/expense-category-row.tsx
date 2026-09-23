@@ -14,6 +14,7 @@ type ExpenseItem = {
   id: string
   name: string
   budgetedAmount: number
+  actualAmount: number | null
 }
 
 type ExpenseCategoryRowProps = {
@@ -65,9 +66,7 @@ export function ExpenseCategoryRow({
           </div>
         </div>
         <div className="hidden text-right sm:block">
-          <p className="font-medium tabular-nums">
-            ${spent.toLocaleString()}
-          </p>
+          <p className="font-medium tabular-nums">${spent.toLocaleString()}</p>
           <p className="text-xs text-muted-foreground">
             of ${budgeted.toLocaleString()} budget
           </p>
@@ -83,7 +82,11 @@ export function ExpenseCategoryRow({
         <CollapsibleContent>
           <ul className="mt-3 space-y-1.5 border-t pt-3">
             {items.map((item) => (
-              <ExpenseItemRow key={item.id} item={item} categoryName={category} />
+              <ExpenseItemRow
+                key={item.id}
+                item={item}
+                categoryName={category}
+              />
             ))}
           </ul>
         </CollapsibleContent>

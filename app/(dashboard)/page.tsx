@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { eq } from "drizzle-orm"
+import { asc, eq } from "drizzle-orm"
 import { CircleDollarSign, Receipt } from "lucide-react"
 
 import {
@@ -39,10 +39,16 @@ export default async function DashboardPage() {
     .select()
     .from(categoryBudgetExpenses)
     .where(eq(categoryBudgetExpenses.userId, session.user.id))
+    .orderBy(asc(categoryBudgetExpenses.name))
 
   const itemsByCategory = new Map<
     string,
-    { id: string; name: string; budgetedAmount: number }[]
+    {
+      id: string
+      name: string
+      budgetedAmount: number
+      actualAmount: number | null
+    }[]
   >()
   for (const expense of expenses) {
     const items = itemsByCategory.get(expense.categoryId) ?? []
@@ -50,6 +56,7 @@ export default async function DashboardPage() {
       id: expense.id,
       name: expense.name,
       budgetedAmount: expense.budgetedAmount,
+      actualAmount: expense.actualAmount,
     })
     itemsByCategory.set(expense.categoryId, items)
   }
@@ -60,7 +67,7 @@ export default async function DashboardPage() {
       id: category.id,
       category: category.name,
       budgeted: items.reduce((total, item) => total + item.budgetedAmount, 0),
-      spent: 0,
+      spent: items.reduce((total, item) => total + (item.actualAmount ?? 0), 0),
       items,
     }
   })

@@ -109,6 +109,11 @@ export const categoryBudgetExpenses = pgTable(
       scale: 2,
       mode: "number",
     }).notNull(),
+    actualAmount: numeric("actual_amount", {
+      precision: 10,
+      scale: 2,
+      mode: "number",
+    }),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
