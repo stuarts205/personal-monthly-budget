@@ -2,11 +2,48 @@
 
 import { headers } from "next/headers"
 import { revalidatePath } from "next/cache"
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 import { db } from "@/db"
 import { categoryBudgetExpenses, expenseCategories, income } from "@/db/schema"
 import { auth } from "@/lib/auth"
+
+export async function addExpenseCategory(
+  formData: FormData
+): Promise<{ success: true } | { success: false; error: string }> {
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session) {
+    throw new Error("Unauthorized")
+  }
+
+  const name = String(formData.get("name") ?? "").trim()
+
+  if (!name) {
+    return { success: false, error: "Category name is required." }
+  }
+
+  const [existing] = await db
+    .select({ id: expenseCategories.id })
+    .from(expenseCategories)
+    .where(
+      and(
+        eq(expenseCategories.userId, session.user.id),
+        sql`lower(${expenseCategories.name}) = lower(${name})`
+      )
+    )
+
+  if (existing) {
+    return {
+      success: false,
+      error: `You already have a category named "${name}".`,
+    }
+  }
+
+  await db.insert(expenseCategories).values({ name, userId: session.user.id })
+
+  revalidatePath("/")
+  return { success: true }
+}
 
 export async function addCategoryBudgetExpense(formData: FormData) {
   const session = await auth.api.getSession({ headers: await headers() })

@@ -3,7 +3,14 @@ import { redirect } from "next/navigation"
 import { eq } from "drizzle-orm"
 import { CircleDollarSign, Receipt } from "lucide-react"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { AddExpenseCategoryDialog } from "@/components/add-expense-category-dialog"
 import { IncomeEditor } from "@/components/income-editor"
 import { ExpenseCategoryRow } from "@/components/expense-category-row"
 import { auth } from "@/lib/auth"
@@ -158,6 +165,9 @@ export default async function DashboardPage() {
               <CardTitle className="text-blue-700">
                 Expense categories
               </CardTitle>
+              <CardAction>
+                <AddExpenseCategoryDialog />
+              </CardAction>
             </CardHeader>
             <CardContent className="divide-y">
               {spending.map(({ id, category, budgeted, spent, items }) => (
