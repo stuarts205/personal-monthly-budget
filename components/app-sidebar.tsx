@@ -16,6 +16,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 
 type AppSidebarProps = {
@@ -25,6 +26,8 @@ type AppSidebarProps = {
 
 export function AppSidebar({ userName, userEmail }: AppSidebarProps) {
   const pathname = usePathname()
+  const { setOpenMobile } = useSidebar()
+  const closeMobileSidebar = () => setOpenMobile(false)
 
   return (
     <Sidebar>
@@ -41,6 +44,7 @@ export function AppSidebar({ userName, userEmail }: AppSidebarProps) {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname === "/"}
+                  onClick={closeMobileSidebar}
                   render={<Link href="/" />}
                 >
                   <LayoutDashboard />
@@ -50,6 +54,7 @@ export function AppSidebar({ userName, userEmail }: AppSidebarProps) {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname.startsWith("/history")}
+                  onClick={closeMobileSidebar}
                   render={<Link href="/history" />}
                 >
                   <History />
