@@ -2,19 +2,11 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { desc, eq, sql } from "drizzle-orm"
 
-import { Badge } from "@/components/ui/badge"
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { HistoryMonthCard } from "@/components/history-month-card"
 import { auth } from "@/lib/auth"
 import { formatMonth, getCurrentMonth } from "@/lib/budget-month"
 import { db } from "@/db"
-import { monthlyActualExpenses } from "@/db/schema"
+import { categoryBudgetExpenses, monthlyActualExpenses } from "@/db/schema"
 
 function formatCurrency(amount: number) {
   return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
@@ -28,6 +20,20 @@ export default async function HistoryPage() {
   if (!session) redirect("/sign-in")
 
   const currentMonth = getCurrentMonth()
+
+  // The same "Total budgeted expenses" figure the dashboard shows: every
+  // budget item, not just the ones with an entry in a given month. Past
+  // months don't keep their own copy of the budget, so only the current month
+  // shows it; past months show just what was spent.
+  const [{ totalBudgeted }] = await db
+    .select({
+      totalBudgeted:
+        sql<string>`coalesce(sum(${categoryBudgetExpenses.budgetedAmount}), 0)`.mapWith(
+          Number
+        ),
+    })
+    .from(categoryBudgetExpenses)
+    .where(eq(categoryBudgetExpenses.userId, session.user.id))
 
   // Each actual entered is its own row, so total them per budget item. The
   // snapshot columns are part of the grouping so an item keeps one budgeted
@@ -61,17 +67,15 @@ export default async function HistoryPage() {
   const months: {
     month: string
     actual: number
-    budgeted: number
     categories: { name: string; items: typeof rows }[]
   }[] = []
   for (const row of rows) {
     let entry = months.at(-1)
     if (entry?.month !== row.month) {
-      entry = { month: row.month, actual: 0, budgeted: 0, categories: [] }
+      entry = { month: row.month, actual: 0, categories: [] }
       months.push(entry)
     }
     entry.actual += row.actualAmount
-    entry.budgeted += row.budgetedAmount
 
     let category = entry.categories.at(-1)
     if (category?.name !== row.categoryName) {
@@ -97,58 +101,51 @@ export default async function HistoryPage() {
             No actual expenses recorded yet.
           </p>
         ) : (
-          months.map(({ month, actual, budgeted, categories }) => (
-            <Card key={month}>
-              <CardHeader className="border-b">
-                <CardTitle className="text-blue-700">
-                  {formatMonth(month)}
-                </CardTitle>
-                <CardDescription>
-                  {formatCurrency(actual)} spent of {formatCurrency(budgeted)}{" "}
-                  budgeted on the items recorded
-                </CardDescription>
-                {month === currentMonth && (
-                  <CardAction>
-                    <Badge variant="secondary">Current month</Badge>
-                  </CardAction>
-                )}
-              </CardHeader>
-              <CardContent className="divide-y">
-                {categories.map(({ name, items }) => (
-                  <div key={name} className="py-4 first:pt-0 last:pb-0">
-                    <h3 className="font-medium text-blue-700">{name}</h3>
-                    <ul className="mt-2 space-y-1.5">
-                      {items.map((item) => (
-                        <li
-                          key={`${item.budgetExpenseId}-${item.expenseName}-${item.budgetedAmount}`}
-                          className="flex items-center justify-between gap-3 text-sm"
-                        >
-                          <span className="text-muted-foreground">
-                            {item.expenseName}
+          months.map(({ month, actual, categories }) => (
+            <HistoryMonthCard
+              key={month}
+              monthLabel={formatMonth(month)}
+              summary={
+                month === currentMonth
+                  ? `${formatCurrency(actual)} spent of ${formatCurrency(totalBudgeted)} total budgeted expenses`
+                  : `${formatCurrency(actual)} spent`
+              }
+              isCurrent={month === currentMonth}
+            >
+              {categories.map(({ name, items }) => (
+                <div key={name} className="py-4 first:pt-0 last:pb-0">
+                  <h3 className="font-medium text-blue-700">{name}</h3>
+                  <ul className="mt-2 space-y-1.5">
+                    {items.map((item) => (
+                      <li
+                        key={`${item.budgetExpenseId}-${item.expenseName}-${item.budgetedAmount}`}
+                        className="flex items-center justify-between gap-3 text-sm"
+                      >
+                        <span className="text-muted-foreground">
+                          {item.expenseName}
+                        </span>
+                        <span className="tabular-nums">
+                          <span
+                            className={
+                              item.actualAmount > item.budgetedAmount
+                                ? "text-red-600"
+                                : "text-emerald-600"
+                            }
+                            title="Actual"
+                          >
+                            {formatCurrency(item.actualAmount)}
                           </span>
-                          <span className="tabular-nums">
-                            <span
-                              className={
-                                item.actualAmount > item.budgetedAmount
-                                  ? "text-red-600"
-                                  : "text-emerald-600"
-                              }
-                              title="Actual"
-                            >
-                              {formatCurrency(item.actualAmount)}
-                            </span>
-                            <span className="text-muted-foreground"> / </span>
-                            <span title="Budgeted">
-                              {formatCurrency(item.budgetedAmount)}
-                            </span>
+                          <span className="text-muted-foreground"> / </span>
+                          <span title="Budgeted">
+                            {formatCurrency(item.budgetedAmount)}
                           </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </HistoryMonthCard>
           ))
         )}
       </div>
