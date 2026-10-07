@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { LayoutDashboard } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { History, LayoutDashboard } from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import {
@@ -23,6 +24,8 @@ type AppSidebarProps = {
 }
 
 export function AppSidebar({ userName, userEmail }: AppSidebarProps) {
+  const pathname = usePathname()
+
   return (
     <Sidebar>
       <SidebarHeader>
@@ -36,9 +39,21 @@ export function AppSidebar({ userName, userEmail }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton isActive render={<Link href="/" />}>
+                <SidebarMenuButton
+                  isActive={pathname === "/"}
+                  render={<Link href="/" />}
+                >
                   <LayoutDashboard />
                   <span>Dashboard</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith("/history")}
+                  render={<Link href="/history" />}
+                >
+                  <History />
+                  <span>History</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

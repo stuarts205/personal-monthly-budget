@@ -5,8 +5,14 @@ import { revalidatePath } from "next/cache"
 import { and, eq, sql } from "drizzle-orm"
 
 import { db } from "@/db"
-import { categoryBudgetExpenses, expenseCategories, income } from "@/db/schema"
+import {
+  categoryBudgetExpenses,
+  expenseCategories,
+  income,
+  monthlyActualExpenses,
+} from "@/db/schema"
 import { auth } from "@/lib/auth"
+import { getCurrentMonth } from "@/lib/budget-month"
 
 export async function addExpenseCategory(
   formData: FormData
@@ -128,7 +134,20 @@ export async function updateCategoryBudgetExpense(formData: FormData) {
     throw new Error("Expense not found")
   }
 
+  // Keep this month's recorded actual in step with the budget item. Past
+  // months are left alone so history shows what the budget was back then.
+  await db
+    .update(monthlyActualExpenses)
+    .set({ expenseName: name, budgetedAmount })
+    .where(
+      and(
+        eq(monthlyActualExpenses.budgetExpenseId, id),
+        eq(monthlyActualExpenses.month, getCurrentMonth())
+      )
+    )
+
   revalidatePath("/")
+  revalidatePath("/history")
 }
 
 export async function updateActualExpense(formData: FormData) {
@@ -149,22 +168,50 @@ export async function updateActualExpense(formData: FormData) {
     throw new Error("Actual amount must be a positive number")
   }
 
-  const [updated] = await db
-    .update(categoryBudgetExpenses)
-    .set({ actualAmount })
+  const [expense] = await db
+    .select({
+      id: categoryBudgetExpenses.id,
+      name: categoryBudgetExpenses.name,
+      budgetedAmount: categoryBudgetExpenses.budgetedAmount,
+      categoryName: expenseCategories.name,
+    })
+    .from(categoryBudgetExpenses)
+    .innerJoin(
+      expenseCategories,
+      eq(categoryBudgetExpenses.categoryId, expenseCategories.id)
+    )
     .where(
       and(
         eq(categoryBudgetExpenses.id, id),
         eq(categoryBudgetExpenses.userId, session.user.id)
       )
     )
-    .returning()
 
-  if (!updated) {
+  if (!expense) {
     throw new Error("Expense not found")
   }
 
+  await db
+    .insert(monthlyActualExpenses)
+    .values({
+      userId: session.user.id,
+      budgetExpenseId: expense.id,
+      month: getCurrentMonth(),
+      actualAmount,
+      expenseName: expense.name,
+      categoryName: expense.categoryName,
+      budgetedAmount: expense.budgetedAmount,
+    })
+    .onConflictDoUpdate({
+      target: [
+        monthlyActualExpenses.budgetExpenseId,
+        monthlyActualExpenses.month,
+      ],
+      set: { actualAmount },
+    })
+
   revalidatePath("/")
+  revalidatePath("/history")
 }
 
 export async function updateIncome(formData: FormData) {

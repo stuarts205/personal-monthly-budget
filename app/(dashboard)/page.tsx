@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq } from "drizzle-orm"
 import { CircleDollarSign, Receipt } from "lucide-react"
 
 import {
@@ -15,7 +15,13 @@ import { IncomeEditor } from "@/components/income-editor"
 import { ExpenseCategoryRow } from "@/components/expense-category-row"
 import { auth } from "@/lib/auth"
 import { db } from "@/db"
-import { categoryBudgetExpenses, expenseCategories, income } from "@/db/schema"
+import {
+  categoryBudgetExpenses,
+  expenseCategories,
+  income,
+  monthlyActualExpenses,
+} from "@/db/schema"
+import { formatMonth, getCurrentMonth } from "@/lib/budget-month"
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -23,6 +29,8 @@ export default async function DashboardPage() {
   })
 
   if (!session) redirect("/sign-in")
+
+  const month = getCurrentMonth()
 
   const [incomeRow] = await db
     .select()
@@ -41,6 +49,26 @@ export default async function DashboardPage() {
     .where(eq(categoryBudgetExpenses.userId, session.user.id))
     .orderBy(asc(categoryBudgetExpenses.name))
 
+  // Only this month's actuals: when the month changes there are none, so every
+  // item starts over. Earlier months stay in monthly_actual_expenses.
+  const monthlyActuals = await db
+    .select({
+      budgetExpenseId: monthlyActualExpenses.budgetExpenseId,
+      actualAmount: monthlyActualExpenses.actualAmount,
+    })
+    .from(monthlyActualExpenses)
+    .where(
+      and(
+        eq(monthlyActualExpenses.userId, session.user.id),
+        eq(monthlyActualExpenses.month, month)
+      )
+    )
+
+  const actualByExpenseId = new Map<string, number>()
+  for (const { budgetExpenseId, actualAmount } of monthlyActuals) {
+    if (budgetExpenseId) actualByExpenseId.set(budgetExpenseId, actualAmount)
+  }
+
   const itemsByCategory = new Map<
     string,
     {
@@ -56,7 +84,7 @@ export default async function DashboardPage() {
       id: expense.id,
       name: expense.name,
       budgetedAmount: expense.budgetedAmount,
-      actualAmount: expense.actualAmount,
+      actualAmount: actualByExpenseId.get(expense.id) ?? null,
     })
     itemsByCategory.set(expense.categoryId, items)
   }
@@ -163,8 +191,8 @@ export default async function DashboardPage() {
               Actual Spending
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              ${actualSpendingTotal.toLocaleString()} spent across all expense
-              categories.
+              {formatMonth(month)}: ${actualSpendingTotal.toLocaleString()}{" "}
+              spent across all expense categories.
             </p>
           </div>
           <Card>
