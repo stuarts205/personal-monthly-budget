@@ -8,14 +8,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import { AddCategoryBudgetExpenseDialog } from "@/components/add-category-budget-expense-dialog"
-import { ExpenseItemRow } from "@/components/expense-item-row"
-
-type ExpenseItem = {
-  id: string
-  name: string
-  budgetedAmount: number
-  actualAmount: number | null
-}
+import { ExpenseItemRow, type ExpenseItem } from "@/components/expense-item-row"
 
 type ExpenseCategoryRowProps = {
   categoryId: string

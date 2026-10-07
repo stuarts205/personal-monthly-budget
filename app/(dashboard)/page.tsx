@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, sql } from "drizzle-orm"
 import { CircleDollarSign, Receipt } from "lucide-react"
 
 import {
@@ -21,7 +21,13 @@ import {
   income,
   monthlyActualExpenses,
 } from "@/db/schema"
-import { formatMonth, getCurrentMonth } from "@/lib/budget-month"
+import type { ExpenseEntry, ExpenseItem } from "@/components/expense-item-row"
+import {
+  formatEntryDate,
+  formatMonth,
+  getCurrentDate,
+  getCurrentMonth,
+} from "@/lib/budget-month"
 
 export default async function DashboardPage() {
   const session = await auth.api.getSession({
@@ -50,11 +56,13 @@ export default async function DashboardPage() {
     .orderBy(asc(categoryBudgetExpenses.name))
 
   // Only this month's actuals: when the month changes there are none, so every
-  // item starts over. Earlier months stay in monthly_actual_expenses.
+  // item starts over. Earlier months stay in monthly_actual_expenses. Each
+  // entry is its own row, so they're totalled per budget item here.
   const monthlyActuals = await db
     .select({
       budgetExpenseId: monthlyActualExpenses.budgetExpenseId,
-      actualAmount: monthlyActualExpenses.actualAmount,
+      actualAmount:
+        sql<string>`sum(${monthlyActualExpenses.actualAmount})`.mapWith(Number),
     })
     .from(monthlyActualExpenses)
     .where(
@@ -63,21 +71,55 @@ export default async function DashboardPage() {
         eq(monthlyActualExpenses.month, month)
       )
     )
+    .groupBy(monthlyActualExpenses.budgetExpenseId)
 
   const actualByExpenseId = new Map<string, number>()
   for (const { budgetExpenseId, actualAmount } of monthlyActuals) {
     if (budgetExpenseId) actualByExpenseId.set(budgetExpenseId, actualAmount)
   }
 
-  const itemsByCategory = new Map<
-    string,
-    {
-      id: string
-      name: string
-      budgetedAmount: number
-      actualAmount: number | null
-    }[]
-  >()
+  // The individual entries behind each total, for the expandable list under
+  // every budget item. Entries recorded before spent_on existed fall back to
+  // the day they were created. Dates are formatted here because the budget
+  // time zone is only known on the server.
+  const monthlyEntries = (
+    await db
+      .select({
+        id: monthlyActualExpenses.id,
+        budgetExpenseId: monthlyActualExpenses.budgetExpenseId,
+        amount: monthlyActualExpenses.actualAmount,
+        description: monthlyActualExpenses.description,
+        spentOn: monthlyActualExpenses.spentOn,
+        createdAt: monthlyActualExpenses.createdAt,
+      })
+      .from(monthlyActualExpenses)
+      .where(
+        and(
+          eq(monthlyActualExpenses.userId, session.user.id),
+          eq(monthlyActualExpenses.month, month)
+        )
+      )
+  )
+    .map((row) => ({
+      ...row,
+      date: row.spentOn ?? getCurrentDate(row.createdAt),
+    }))
+    // Newest first; same-day entries by when they were added.
+    .sort(
+      (a, b) =>
+        b.date.localeCompare(a.date) ||
+        b.createdAt.getTime() - a.createdAt.getTime()
+    )
+
+  const entriesByExpenseId = new Map<string, ExpenseEntry[]>()
+  for (const { id, budgetExpenseId, amount, description, date } of monthlyEntries) {
+    if (!budgetExpenseId) continue
+    const entries = entriesByExpenseId.get(budgetExpenseId) ?? []
+    entries.push({ id, amount, description, dateLabel: formatEntryDate(date) })
+    entriesByExpenseId.set(budgetExpenseId, entries)
+  }
+
+  const itemsByCategory = new Map<string, ExpenseItem[]>()
   for (const expense of expenses) {
     const items = itemsByCategory.get(expense.categoryId) ?? []
     items.push({
@@ -85,6 +127,7 @@ export default async function DashboardPage() {
       name: expense.name,
       budgetedAmount: expense.budgetedAmount,
       actualAmount: actualByExpenseId.get(expense.id) ?? null,
+      entries: entriesByExpenseId.get(expense.id) ?? [],
     })
     itemsByCategory.set(expense.categoryId, items)
   }

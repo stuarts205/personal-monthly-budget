@@ -1,4 +1,4 @@
-import { boolean, index, integer, numeric, pgTable, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, numeric, pgTable, text, timestamp, unique, varchar } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -134,10 +134,11 @@ export const categoryBudgetExpenses = pgTable(
   ]
 );
 
-// One row per budget item per calendar month. The dashboard only reads the
-// current month's rows, so a new month starts empty and past months stay as a
-// permanent record. Names and the budgeted amount are snapshotted so history
-// survives later renames or deletions of the budget item.
+// One row per actual expense entered: paying a loan twice in a month creates
+// two rows for that budget item. The dashboard sums the current month's rows
+// per item, so a new month starts empty and past months stay as a permanent
+// record. Names and the budgeted amount are snapshotted so history survives
+// later renames or deletions of the budget item.
 export const monthlyActualExpenses = pgTable(
   "monthly_actual_expenses",
   {
@@ -151,7 +152,11 @@ export const monthlyActualExpenses = pgTable(
       () => categoryBudgetExpenses.id,
       { onDelete: "set null" }
     ),
-    month: text("month").notNull(), // "YYYY-MM"
+    month: text("month").notNull(), // "YYYY-MM", always the month of spentOn
+    // The day the money was spent. Null on entries recorded before this column
+    // existed; those fall back to createdAt.
+    spentOn: date("spent_on", { mode: "string" }), // "YYYY-MM-DD"
+    description: text("description"),
     actualAmount: numeric("actual_amount", {
       precision: 10,
       scale: 2,
@@ -175,7 +180,7 @@ export const monthlyActualExpenses = pgTable(
       table.userId,
       table.month
     ),
-    unique("monthly_actual_expenses_budget_expense_id_month_key").on(
+    index("monthly_actual_expenses_budgetExpenseId_month_idx").on(
       table.budgetExpenseId,
       table.month
     ),

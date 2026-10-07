@@ -12,7 +12,9 @@ import {
   monthlyActualExpenses,
 } from "@/db/schema"
 import { auth } from "@/lib/auth"
-import { getCurrentMonth } from "@/lib/budget-month"
+import { getCurrentMonth, isValidDateString } from "@/lib/budget-month"
+
+const MAX_DESCRIPTION_LENGTH = 200
 
 export async function addExpenseCategory(
   formData: FormData
@@ -160,12 +162,20 @@ export async function updateActualExpense(formData: FormData) {
   const actualAmount = Number.parseFloat(
     String(formData.get("actualAmount") ?? "")
   )
+  const spentOn = String(formData.get("spentOn") ?? "").trim()
+  const description = String(formData.get("description") ?? "").trim()
 
   if (!id) {
     throw new Error("Expense id is required")
   }
   if (!Number.isFinite(actualAmount) || actualAmount < 0) {
     throw new Error("Actual amount must be a positive number")
+  }
+  if (!isValidDateString(spentOn)) {
+    throw new Error("Date must be a valid date")
+  }
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error("Description is too long")
   }
 
   const [expense] = await db
@@ -191,24 +201,20 @@ export async function updateActualExpense(formData: FormData) {
     throw new Error("Expense not found")
   }
 
-  await db
-    .insert(monthlyActualExpenses)
-    .values({
-      userId: session.user.id,
-      budgetExpenseId: expense.id,
-      month: getCurrentMonth(),
-      actualAmount,
-      expenseName: expense.name,
-      categoryName: expense.categoryName,
-      budgetedAmount: expense.budgetedAmount,
-    })
-    .onConflictDoUpdate({
-      target: [
-        monthlyActualExpenses.budgetExpenseId,
-        monthlyActualExpenses.month,
-      ],
-      set: { actualAmount },
-    })
+  // Every entry is its own row (e.g. each loan payment); the dashboard and
+  // history add up the rows for a budget item. The entry counts toward the
+  // month of the date it was spent on, which may not be the current month.
+  await db.insert(monthlyActualExpenses).values({
+    userId: session.user.id,
+    budgetExpenseId: expense.id,
+    month: spentOn.slice(0, 7),
+    spentOn,
+    description: description || null,
+    actualAmount,
+    expenseName: expense.name,
+    categoryName: expense.categoryName,
+    budgetedAmount: expense.budgetedAmount,
+  })
 
   revalidatePath("/")
   revalidatePath("/history")

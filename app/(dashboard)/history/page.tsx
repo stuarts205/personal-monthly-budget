@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { desc, eq } from "drizzle-orm"
+import { desc, eq, sql } from "drizzle-orm"
 
 import { Badge } from "@/components/ui/badge"
 import {
@@ -29,10 +29,28 @@ export default async function HistoryPage() {
 
   const currentMonth = getCurrentMonth()
 
+  // Each actual entered is its own row, so total them per budget item. The
+  // snapshot columns are part of the grouping so an item keeps one budgeted
+  // amount no matter how many entries it has.
   const rows = await db
-    .select()
+    .select({
+      month: monthlyActualExpenses.month,
+      budgetExpenseId: monthlyActualExpenses.budgetExpenseId,
+      categoryName: monthlyActualExpenses.categoryName,
+      expenseName: monthlyActualExpenses.expenseName,
+      budgetedAmount: monthlyActualExpenses.budgetedAmount,
+      actualAmount:
+        sql<string>`sum(${monthlyActualExpenses.actualAmount})`.mapWith(Number),
+    })
     .from(monthlyActualExpenses)
     .where(eq(monthlyActualExpenses.userId, session.user.id))
+    .groupBy(
+      monthlyActualExpenses.month,
+      monthlyActualExpenses.budgetExpenseId,
+      monthlyActualExpenses.categoryName,
+      monthlyActualExpenses.expenseName,
+      monthlyActualExpenses.budgetedAmount
+    )
     .orderBy(
       desc(monthlyActualExpenses.month),
       monthlyActualExpenses.categoryName,
@@ -102,7 +120,7 @@ export default async function HistoryPage() {
                     <ul className="mt-2 space-y-1.5">
                       {items.map((item) => (
                         <li
-                          key={item.id}
+                          key={`${item.budgetExpenseId}-${item.expenseName}-${item.budgetedAmount}`}
                           className="flex items-center justify-between gap-3 text-sm"
                         >
                           <span className="text-muted-foreground">

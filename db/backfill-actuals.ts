@@ -35,20 +35,31 @@ async function main() {
     return;
   }
 
-  const inserted = await db
-    .insert(monthlyActualExpenses)
-    .values(
-      legacy.map((row) => ({
-        ...row,
-        actualAmount: row.actualAmount!,
-        month,
-      })),
-    )
-    .onConflictDoNothing()
-    .returning({ id: monthlyActualExpenses.id });
+  // Every actual is its own row, so there's no unique key to lean on: skip any
+  // budget item that already has an entry this month so a re-run can't
+  // double-count.
+  const existing = await db
+    .select({ budgetExpenseId: monthlyActualExpenses.budgetExpenseId })
+    .from(monthlyActualExpenses)
+    .where(eq(monthlyActualExpenses.month, month));
+  const alreadyRecorded = new Set(existing.map((row) => row.budgetExpenseId));
+  const pending = legacy.filter((row) => !alreadyRecorded.has(row.budgetExpenseId));
+
+  if (pending.length === 0) {
+    console.log(`All ${legacy.length} legacy actual expenses are already in ${month}.`);
+    return;
+  }
+
+  await db.insert(monthlyActualExpenses).values(
+    pending.map((row) => ({
+      ...row,
+      actualAmount: row.actualAmount!,
+      month,
+    })),
+  );
 
   console.log(
-    `Copied ${inserted.length} of ${legacy.length} legacy actual expenses into ${month}.`,
+    `Copied ${pending.length} of ${legacy.length} legacy actual expenses into ${month}.`,
   );
 }
 

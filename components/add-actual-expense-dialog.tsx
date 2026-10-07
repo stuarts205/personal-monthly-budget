@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { format } from "date-fns"
 import { Plus } from "lucide-react"
 
 import {
@@ -33,18 +34,32 @@ type AddActualExpenseDialogProps = {
   actualAmount: number | null
 }
 
+function formatCurrency(amount: number) {
+  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+}
+
 function ActualExpenseForm({
   budgetedAmount,
+  currentActualAmount,
   actualAmount,
   onActualAmountChange,
+  spentOn,
+  onSpentOnChange,
+  description,
+  onDescriptionChange,
   onCancel,
   onSubmit,
   isSubmitting,
   error,
 }: {
   budgetedAmount: number
+  currentActualAmount: number | null
   actualAmount: string
   onActualAmountChange: (value: string) => void
+  spentOn: string
+  onSpentOnChange: (value: string) => void
+  description: string
+  onDescriptionChange: (value: string) => void
   onCancel: () => void
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
   isSubmitting: boolean
@@ -52,17 +67,24 @@ function ActualExpenseForm({
 }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Budgeted:{" "}
-        <span className="font-medium text-foreground tabular-nums">
-          $
-          {budgetedAmount.toLocaleString("en-US", {
-            minimumFractionDigits: 2,
-          })}
-        </span>
-      </p>
+      <div className="space-y-1 text-sm text-muted-foreground">
+        <p>
+          Budgeted:{" "}
+          <span className="font-medium text-foreground tabular-nums">
+            {formatCurrency(budgetedAmount)}
+          </span>
+        </p>
+        {currentActualAmount !== null && (
+          <p>
+            Spent so far this month:{" "}
+            <span className="font-medium text-foreground tabular-nums">
+              {formatCurrency(currentActualAmount)}
+            </span>
+          </p>
+        )}
+      </div>
       <div className="space-y-2">
-        <Label htmlFor="actual-expense-amount">Actual amount</Label>
+        <Label htmlFor="actual-expense-amount">Amount to add</Label>
         <div className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
             $
@@ -81,13 +103,38 @@ function ActualExpenseForm({
           />
         </div>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="actual-expense-date">Date</Label>
+        <Input
+          id="actual-expense-date"
+          name="spentOn"
+          type="date"
+          value={spentOn}
+          onChange={(event) => onSpentOnChange(event.target.value)}
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="actual-expense-description">
+          Description{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
+        </Label>
+        <Input
+          id="actual-expense-description"
+          name="description"
+          type="text"
+          value={description}
+          onChange={(event) => onDescriptionChange(event.target.value)}
+          maxLength={200}
+        />
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Saving..." : "Save actual"}
+          {isSubmitting ? "Saving..." : "Add to actual"}
         </Button>
       </div>
     </form>
@@ -103,14 +150,21 @@ export function AddActualExpenseDialog({
 }: AddActualExpenseDialogProps) {
   const isMobile = useIsMobile()
   const [open, setOpen] = React.useState(false)
-  const [amount, setAmount] = React.useState(actualAmount?.toFixed(2) ?? "")
+  // Starts empty each time: the amount entered is added to the month's total.
+  const [amount, setAmount] = React.useState("")
+  const [spentOn, setSpentOn] = React.useState("")
+  const [description, setDescription] = React.useState("")
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
     if (nextOpen) {
-      setAmount(actualAmount?.toFixed(2) ?? "")
+      setAmount("")
+      // Set on open rather than at first render so the server and browser
+      // can't disagree about what "today" is during hydration.
+      setSpentOn(format(new Date(), "yyyy-MM-dd"))
+      setDescription("")
       setError(null)
     }
   }
@@ -124,6 +178,8 @@ export function AddActualExpenseDialog({
       const formData = new FormData()
       formData.set("id", expenseId)
       formData.set("actualAmount", amount)
+      formData.set("spentOn", spentOn)
+      formData.set("description", description)
       await updateActualExpense(formData)
       handleOpenChange(false)
     } catch {
@@ -133,9 +189,8 @@ export function AddActualExpenseDialog({
     }
   }
 
-  const title =
-    actualAmount === null ? "Add actual expense" : "Update actual expense"
-  const description = `Record what you actually spent on ${expenseName} under ${categoryName}.`
+  const title = "Add actual expense"
+  const dialogDescription = `Record what you actually spent on ${expenseName} under ${categoryName}. Each amount you add counts toward the month of the date you pick.`
 
   const triggerButton = (
     <Button
@@ -149,8 +204,13 @@ export function AddActualExpenseDialog({
   const form = (
     <ActualExpenseForm
       budgetedAmount={budgetedAmount}
+      currentActualAmount={actualAmount}
       actualAmount={amount}
       onActualAmountChange={setAmount}
+      spentOn={spentOn}
+      onSpentOnChange={setSpentOn}
+      description={description}
+      onDescriptionChange={setDescription}
       onCancel={() => handleOpenChange(false)}
       onSubmit={handleSubmit}
       isSubmitting={isSubmitting}
@@ -167,7 +227,7 @@ export function AddActualExpenseDialog({
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>{title}</DrawerTitle>
-            <DrawerDescription>{description}</DrawerDescription>
+            <DrawerDescription>{dialogDescription}</DrawerDescription>
           </DrawerHeader>
           <div className="p-4">{form}</div>
         </DrawerContent>
@@ -183,7 +243,7 @@ export function AddActualExpenseDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
         {form}
       </DialogContent>
