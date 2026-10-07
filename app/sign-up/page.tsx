@@ -6,6 +6,7 @@ import { FormEvent, useState } from "react"
 import { LoaderCircle } from "lucide-react"
 
 import { authClient } from "@/lib/auth-client"
+import { AuthShell } from "@/components/auth-shell"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -55,7 +56,7 @@ export default function SignUpPage() {
   }
 
   return (
-    <main className="grid min-h-svh place-items-center bg-muted/40 p-4">
+    <AuthShell>
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-xl">Create your account</CardTitle>
@@ -136,6 +137,6 @@ export default function SignUpPage() {
           </p>
         </CardContent>
       </Card>
-    </main>
+    </AuthShell>
   )
 }
